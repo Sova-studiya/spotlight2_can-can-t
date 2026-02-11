@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Froggy Swamp Final</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Arial', sans-serif; }
+        body {
+            background: url('https://imgur.com/kggXuIF.png') no-repeat center center;
+            background-size: cover;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        #ui-panel {
+            width: 100%; background: rgba(255, 255, 255, 0.9);
+            padding: 10px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100;
+        }
+        #sentence-task { font-size: 1.4rem; font-weight: bold; color: #1b5e20; min-height: 1.5em; }
+        
+        #swamp-grid {
+            flex-grow: 1; width: 100%; max-width: 600px;
+            display: grid;
+            grid-template-rows: repeat(3, 1fr);
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px; padding: 15px; box-sizing: border-box; position: relative;
+        }
+
+        .lily-pad {
+            background: url('https://imgur.com/9hsrdwZ.png') no-repeat center center;
+            background-size: 100% 85%; /* Увеличили кочку */
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; 
+            cursor: pointer; position: relative;
+        }
+
+        .word-tag {
+            background: white; padding: 4px 10px; border-radius: 8px;
+            font-weight: bold; font-size: 1.2rem; color: #000;
+            border: 2px solid #2e7d32;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 5;
+            position: absolute;
+            top: 15%; /* Текст всегда в верхней части кочки */
+        }
+
+        #frog {
+            position: absolute; 
+            font-size: 3.5rem; /* Уменьшили лягушку */
+            z-index: 50;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            filter: drop-shadow(0 5px 8px rgba(0,0,0,0.4));
+            /* Центрирование */
+            margin-left: -1.75rem; 
+            margin-top: -1.75rem;
+        }
+
+        .monster-active {
+            background-size: 100% 85% !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+        }
+        .monster-active .word-tag { visibility: hidden; }
+
+        .error-shake { animation: shake 0.5s; }
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-15px, 0); }
+            40% { transform: translate(15px, 0); }
+            60% { transform: translate(-10px, 0); }
+            80% { transform: translate(10px, 0); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <div style="display: flex; justify-content: space-around; font-weight: bold; font-size: 1rem;">
+        <span>Счёт: <span id="score">0</span></span>
+        <span>Побед: <span id="wins">0</span>/20</span>
+    </div>
+    <div id="sentence-task">Загрузка...</div>
+</div>
+
+<div id="swamp-grid">
+    <div id="frog">🐸</div>
+    <div class="lily-pad" data-id="0"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="1"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="2"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="3"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="4"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="5"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="6"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="7"><span class="word-tag"></span></div>
+    <div class="lily-pad" data-id="8"><span class="word-tag"></span></div>
+</div>
+
+<script>
+    const monsterImgs = ['https://imgur.com/jQYWe2V.png', 'https://imgur.com/uFrzMRl.png', 'https://imgur.com/pgO4GT7.png'];
+    const tasks = [
+        { rus: "Лягушка умеет прыгать.", eng: ["A frog", "can", "jump"] },
+        { rus: "Шимпанзе умеет качаться?", eng: ["Can", "a chimp", "swing", "?"] },
+        { rus: "Рыба не умеет летать.", eng: ["A fish", "can't", "fly"] },
+        { rus: "Слон не умеет лазать.", eng: ["An elephant", "can't", "climb"] },
+        { rus: "Девочка умеет танцевать.", eng: ["A girl", "can", "dance"] },
+        { rus: "Мальчик умеет плавать?", eng: ["Can", "a boy", "swim", "?"] },
+        { rus: "Птица умеет петь.", eng: ["A bird", "can", "sing"] },
+        { rus: "Кенгуру не умеет плавать.", eng: ["A kangaroo", "can't", "swim"] },
+        { rus: "Лошадь умеет бегать.", eng: ["A horse", "can", "run"] },
+        { rus: "Кот умеет качаться?", eng: ["Can", "a cat", "swing", "?"] }
+    ];
+
+    let currentTask, step, score = 0, wins = 0, gridWords = [];
+    let isLocked = false;
+
+    function initGame() {
+        isLocked = false;
+        currentTask = tasks[Math.floor(Math.random() * tasks.length)];
+        step = 0;
+        document.getElementById('sentence-task').innerText = currentTask.rus;
+
+        gridWords = new Array(9).fill("");
+        const traps = ["is", "do", "no", "yes", "not", "am", "are"];
+
+        for (let row = 0; row < 3; row++) {
+            let correctWord = currentTask.eng[2 - row] || traps[0];
+            let rowIndices = [row*3, row*3+1, row*3+2];
+            let correctPos = rowIndices[Math.floor(Math.random()*3)];
+            
+            rowIndices.forEach(idx => {
+                gridWords[idx] = (idx === correctPos) ? correctWord : traps[Math.floor(Math.random()*traps.length)];
+            });
+        }
+
+        const pads = document.querySelectorAll('.lily-pad');
+        pads.forEach((pad, i) => {
+            pad.classList.remove('monster-active');
+            pad.style.backgroundImage = "url('https://imgur.com/9hsrdwZ.png')";
+            pad.querySelector('.word-tag').innerText = gridWords[i];
+            pad.onclick = () => handleTap(i, pad);
+        });
+
+        resetFrog();
+    }
+
+    function handleTap(idx, pad) {
+        if (isLocked) return;
+
+        const targetRow = 2 - step;
+        const clickedRow = Math.floor(idx / 3);
+
+        if (clickedRow !== targetRow) return;
+
+        if (gridWords[idx] === currentTask.eng[step]) {
+            step++;
+            jumpTo(pad);
+            if (step === currentTask.eng.length || step === 3) {
+                wins++;
+                score += 5;
+                updateUI();
+                isLocked = true;
+                setTimeout(initGame, 800);
+            }
+        } else {
+            isLocked = true;
+            score -= 2;
+            updateUI();
+            
+            pad.style.backgroundImage = `url('${monsterImgs[Math.floor(Math.random()*3)]}')`;
+            pad.classList.add('monster-active');
+            document.body.classList.add('error-shake');
+            
+            setTimeout(() => {
+                document.body.classList.remove('error-shake');
+                initGame();
+            }, 3000); // Задержка 3 секунды для монстра
+        }
+    }
+
+    function jumpTo(pad) {
+        const frog = document.getElementById('frog');
+        const rect = pad.getBoundingClientRect();
+        const gridRect = document.getElementById('swamp-grid').getBoundingClientRect();
+
+        // Центрируем лягушку ровно посередине кочки
+        const x = rect.left - gridRect.left + (rect.width / 2);
+        const y = rect.top - gridRect.top + (rect.height / 2) + 10; 
+
+        frog.style.left = x + "px";
+        frog.style.top = y + "px";
+    }
+
+    function resetFrog() {
+        const frog = document.getElementById('frog');
+        frog.style.left = "50%";
+        frog.style.top = "92%"; 
+    }
+
+    function updateUI() {
+        document.getElementById('score').innerText = score;
+        document.getElementById('wins').innerText = wins;
+    }
+
+    window.onload = initGame;
+    window.onresize = () => { resetFrog(); if(step > 0) { /* пересчитать прыжок если нужно */ } };
+</script>
+</body>
+</html>
